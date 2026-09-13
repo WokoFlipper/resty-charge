@@ -88,6 +88,32 @@ Installs:
 
 Verify: `systemctl is-enabled huawei-wmi-mode-assert.service` → `enabled`.
 
+## Uninstall
+
+```bash
+# 1. remove the widget (keeps your bar layout clean)
+omarchy plugin disable resty.charge
+omarchy plugin remove resty.charge
+# (equivalent manual way: delete ~/.config/omarchy/plugins/resty.charge/)
+
+# 2. helper script (optional)
+rm -f ~/.local/bin/matebook-set-limit.sh
+
+# 3. self-heal stack (only if you installed it)
+sudo systemctl disable huawei-wmi-mode-assert.service
+sudo rm -f /etc/systemd/system/huawei-wmi-mode-assert.service \
+  /etc/pacman.d/hooks/huawei-charge-heal.hook \
+  /usr/local/bin/huawei-wmi-sfi.sh \
+  /usr/local/bin/huawei-charge-heal.sh
+sudo systemctl daemon-reload
+# Your last charge limit stays in the EC until changed; to uncap fully:
+# echo '95 100' | sudo tee /sys/devices/platform/huawei-wmi/charge_control_thresholds
+```
+
+The widget never touches your Omarchy/bar configuration files on install or
+removal — it only adds its own folder. The charge limit itself is applied
+exclusively on your clicks; nothing is written silently.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
