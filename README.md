@@ -18,6 +18,10 @@ the preset menu with remaining runtime / time-to-limit estimation.
   Covers MateBook series as well as modern Honor MagicBook and other
   Huawei/Honor models — they share the same EC charge control and the same
   Smart Charge behavior on Linux.
+- Kernel **≥ 5.5**: battery protection on the standard battery charge API
+  landed in `huawei-wmi` v3.3 (merged in 5.5). Kernels 5.0–5.4 carry an older
+  driver revision; < 5.0 needs the DKMS module from
+  `aymanbagabas/Huawei-WMI`.
 - Battery `BAT1` under `/sys/class/power_supply/` (adjust the sysfs paths in
   `Widget.qml` if your model exposes a different `BATn`).
 - Your user in the `huawei-wmi` group (the `huawei-wmi` package udev rule
