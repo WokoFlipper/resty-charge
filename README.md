@@ -72,11 +72,15 @@ sudo cat /sys/kernel/debug/huawei-wmi/call   # status 0x00 => OK
 
 This is the same WMI mode call Huawei PC Manager sends on Windows.
 
-### Automatic self-heal (`selfheal/`)
+### Automatic self-heal (`selfheal/`, optional)
 
 ```bash
 cd selfheal && ./install-selfheal.sh   # needs root, run in a terminal
 ```
+
+Optional and never runs on its own: only this explicit installer crosses
+the privilege boundary (sudo, in your terminal). See [SECURITY.md](SECURITY.md)
+for exactly what gets installed where.
 
 Installs:
 
