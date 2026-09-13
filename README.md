@@ -48,6 +48,41 @@ while charging. Data refreshes every 30 seconds.
 | `Widget.qml` | Bar widget + popup menu |
 | `manifest.json` | Omarchy plugin manifest |
 | `matebook-set-limit.sh` | Writes the pair to sysfs + persists to `/etc/default` |
+| `selfheal/` | Boot/resume service + pacman hook against kernel-update breakage (see below) |
+
+## Known issue: limit stops working after reboot / kernel update
+
+After every reboot the embedded controller returns to **Smart Charge** mode,
+which ignores all thresholds and charges to 100%. A kernel update can do the
+same (module rebind). Symptoms: threshold file shows e.g. `40 70` but the
+battery keeps charging past it.
+
+Manual fix (root):
+
+```bash
+sudo sh -c 'echo 0x462848011503 > /sys/kernel/debug/huawei-wmi/arg'
+sudo cat /sys/kernel/debug/huawei-wmi/call   # status 0x01 => repeat
+sudo cat /sys/kernel/debug/huawei-wmi/call   # status 0x00 => OK
+~/.local/bin/matebook-set-limit.sh 40 70
+```
+
+This is the same WMI mode call Huawei PC Manager sends on Windows.
+
+### Automatic self-heal (`selfheal/`)
+
+```bash
+cd selfheal && ./install-selfheal.sh   # needs root, run in a terminal
+```
+
+Installs:
+
+- `huawei-wmi-mode-assert.service` — re-asserts manual mode + thresholds at
+  every boot (via the udev privilege chain) and on resume from
+  suspend/hibernate.
+- pacman hook `huawei-charge-heal.hook` — restores mode + thresholds right
+  after any `linux*`/`huawei-wmi` package transaction, no reboot required.
+
+Verify: `systemctl is-enabled huawei-wmi-mode-assert.service` → `enabled`.
 
 ## License
 

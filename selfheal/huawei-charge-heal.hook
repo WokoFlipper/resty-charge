@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Upgrade
+Operation = Install
+Type = Package
+Target = linux*
+Target = huawei-wmi
+
+[Action]
+Description = Restoring Huawei charge thresholds after kernel/driver update
+When = PostTransaction
+Exec = /usr/local/bin/huawei-charge-heal.sh

@@ -1,0 +1,12 @@
+[Unit]
+Description=Huawei WMI charge-mode assert (Smart Charge off, like PC Manager)
+After=huawei-wmi-privilege.service
+RequiresMountsFor=/sys/kernel/debug
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/huawei-wmi-sfi.sh
+
+[Install]
+WantedBy=huawei-wmi-privilege.service
+WantedBy=hibernate.target hybrid-sleep.target suspend-then-hibernate.target
