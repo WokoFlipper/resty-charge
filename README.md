@@ -4,6 +4,13 @@ Omarchy bar widget that caps battery charging at **70%**, **90%** or **95%**
 to extend battery lifespan. The bar shows the limit as `(N)`; click it for
 the preset menu with remaining runtime / time-to-limit estimation.
 
+> **Works on any Linux.** The charge-limit method itself (sysfs pair,
+> `matebook-set-limit.sh`, Smart Charge WMI reset) is distro-independent —
+> all it needs is a kernel with the `huawei-wmi` driver. Only the bar
+> widget requires Omarchy/Quickshell; the `selfheal/` pacman hook is
+> Arch-only, but the same two scripts restore the limit manually anywhere
+> (see Troubleshooting).
+
 ## Requirements
 
 - Huawei/Honor laptop with the kernel `huawei-wmi` driver
