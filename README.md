@@ -1,4 +1,4 @@
-# Charge limit — battery charge-limit widget for Huawei/Honor MateBooks
+# Charge limit — battery charge-limit widget for Huawei/Honor laptops
 
 Omarchy bar widget that caps battery charging at **70%**, **90%** or **95%**
 to extend battery lifespan. The bar shows the limit as `(N)`; click it for
@@ -6,9 +6,13 @@ the preset menu with remaining runtime / time-to-limit estimation.
 
 ## Requirements
 
-- Huawei/Honor MateBook with the kernel `huawei-wmi` driver
-  (`/sys/devices/platform/huawei-wmi/charge_control_thresholds` must exist)
-- Battery `BAT1` under `/sys/class/power_supply/`
+- Huawei/Honor laptop with the kernel `huawei-wmi` driver
+  (`/sys/devices/platform/huawei-wmi/charge_control_thresholds` must exist).
+  Covers MateBook series as well as modern Honor MagicBook and other
+  Huawei/Honor models — they share the same EC charge control and the same
+  Smart Charge behavior on Linux.
+- Battery `BAT1` under `/sys/class/power_supply/` (adjust the sysfs paths in
+  `Widget.qml` if your model exposes a different `BATn`).
 - Your user in the `huawei-wmi` group (the `huawei-wmi` package udev rule
   handles permissions): `sudo usermod -aG huawei-wmi $USER`
 

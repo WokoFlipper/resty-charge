@@ -1,5 +1,5 @@
 #!/bin/sh
-# Helper: set Huawei/Honor MateBook charge limit via huawei-wmi pair.
+# Helper: set Huawei/Honor laptop charge limit via huawei-wmi pair.
 # Usage: matebook-set-limit.sh <start> <end>
 #   e.g. 40 70 (70%), 70 90 (90%), 70 95 (95%)
 #

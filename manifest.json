@@ -4,7 +4,7 @@
   "name": "Charge limit",
   "version": "1.0.0",
   "author": "Resty",
-  "description": "Battery charge-limit widget for Huawei/Honor MateBooks (70/90/95 presets, runtime estimation). Requires the huawei-wmi driver and matebook-set-limit.sh.",
+  "description": "Battery charge-limit widget for Huawei/Honor laptops (70/90/95 presets, runtime estimation). Requires the huawei-wmi driver and matebook-set-limit.sh.",
   "kinds": [
     "bar-widget"
   ],

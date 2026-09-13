@@ -5,7 +5,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Battery charge-limit widget for Huawei/Honor MateBooks (huawei-wmi).
+// Battery charge-limit widget for Huawei/Honor laptops (huawei-wmi).
 // Bar icon shows the limit as "(N)"; click opens a vertical preset menu
 // with remaining runtime / time-to-limit estimation.
 // Backend: matebook-set-limit.sh writes the start/end pair to sysfs.
