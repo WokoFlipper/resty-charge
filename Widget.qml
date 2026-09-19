@@ -7,7 +7,7 @@ import qs.Ui
 
 // Battery charge-limit widget for Huawei/Honor laptops (huawei-wmi).
 // Bar icon shows the limit as "(N)"; click opens a vertical preset menu
-// with remaining runtime / time-to-limit estimation.
+// with remaining runtime / time-to-limit estimation plus a sleep timer.
 // Backend: matebook-set-limit.sh writes the start/end pair to sysfs.
 BarWidget {
   id: root
@@ -25,14 +25,16 @@ BarWidget {
   readonly property color frameIdle: "#8b95a1"
   readonly property color rowIdleFill: "#4f555e"
   readonly property color rowActiveFill: "#41474f"
+  // Sleep timer palette: warm amber text/controls, system-color frames
+  readonly property color shutAmber: "#ffcf7d"
+  readonly property color shutAmberDeep: "#e8a33d"
   readonly property int panelRadius: 12
   readonly property int rowRadius: 8
 
   // Script-ish font for the time inscription (fallback automatic)
-  readonly property string scriptFont: "Liberation Serif"
-
   // Helper script location (must be on PATH of the shell or absolute)
   readonly property string helper: "$HOME/.local/bin/matebook-set-limit.sh"
+  readonly property string scriptFont: "Liberation Serif"
 
   property int threshold: 70
   property int batteryPct: 0
@@ -42,7 +44,7 @@ BarWidget {
   property int batFull: 1   // µAh
   property bool popupOpen: false
 
-  // Sleep timer state (-1 = none)
+  // Shutdown timer state (-1 = none)
   property int shutPickMins: 30
   property int shutLeftSecs: -1
   property int shutPendingMins: 0
@@ -53,16 +55,19 @@ BarWidget {
   readonly property int timeH: 32
   readonly property int menuW: 240
   readonly property int pad: 6
-  // Sleep timer block below the preset buttons
+  // Shutdown block below the preset buttons
   readonly property int shutTitleH: 18
   readonly property int shutValH: 20
   readonly property int shutSliderH: 26
   readonly property int shutMarksH: 14
   readonly property int shutBtnH: 28
   readonly property int shutGap: 6
-  readonly property int shutBlockH: shutTitleH + shutValH + shutSliderH + shutMarksH + shutBtnH + 4 * shutGap
-  // header + sep + time field + sep + 3 framed rows + gaps + sep + sleep timer block
-  readonly property int menuH: headerH + 1 + timeH + 1 + 3 * rowH + 2 * rowGap + 1 + shutBlockH + 2 * pad + 4
+  readonly property int shutFramePad: 8
+  readonly property int shutFrameTopPad: 4
+  readonly property int shutBlockH: shutTitleH + 1 + shutValH + shutSliderH + shutMarksH + shutBtnH + 5 * shutGap
+  readonly property int topBlockH: headerH + 1 + timeH
+  // framed top block + sep + 3 framed rows + gaps + divider + framed shutdown block
+  readonly property int menuH: topBlockH + shutFrameTopPad + shutFramePad + 1 + 3 * rowH + 2 * rowGap + 20 + shutBlockH + shutFrameTopPad + shutFramePad + 2 * pad + 4
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -110,16 +115,16 @@ BarWidget {
     return h > 0 ? h + ":" + mm + ":" + ss : m + ":" + ss
   }
 
-  // Sleep timer line: picked value, or live countdown (red in last 5 min)
   function shutValText() {
     if (root.shutLeftSecs < 0) return "In " + root.shutPickMins + " min"
     return fmtHMS(root.shutLeftSecs) + " left"
   }
 
+  // Countdown color: amber idle/running, red in the last 5 minutes
   function shutValColor() {
-    if (root.shutLeftSecs < 0) return root.textMain
+    if (root.shutLeftSecs < 0) return root.shutAmber
     if (root.shutLeftSecs <= 300) return "#ff5252"
-    return root.frameActive
+    return root.shutAmber
   }
 
   function fmtDur(mins) {
@@ -250,40 +255,59 @@ BarWidget {
         anchors.margins: root.pad
         spacing: 0
 
-        // Header (disabled look)
-        Item {
-          width: parent.width
-          height: root.headerH
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.left: parent.left
-            anchors.leftMargin: 8
-            text: root.headerText()
-            color: root.textMuted
-            font.pixelSize: 12
-            elide: Text.ElideRight
-            width: parent.width - 16
-          }
-        }
-
-        Rectangle { width: parent.width; height: 1; color: root.sepColor }
-
-        // Remaining runtime / time-to-limit field
+        // Top info block (header + battery time), framed in system color
         Rectangle {
           width: parent.width
-          height: root.timeH
+          height: root.topBlockH + root.shutFrameTopPad + root.shutFramePad
           color: "transparent"
-          border.color: root.panelBorder
+          border.color: Color.accent
           border.width: 1
           radius: root.rowRadius
 
-          Text {
-            anchors.centerIn: parent
-            text: root.timeInfo
-            color: root.levelColor()
-            font.pixelSize: 16
-            font.family: root.scriptFont
-            font.italic: true
+          Column {
+            anchors.fill: parent
+            anchors.leftMargin: root.shutFramePad
+            anchors.rightMargin: root.shutFramePad
+            anchors.topMargin: root.shutFrameTopPad
+            anchors.bottomMargin: root.shutFramePad
+            spacing: 0
+
+          // Header (disabled look)
+          Item {
+            width: parent.width
+            height: root.headerH
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: parent.left
+              anchors.leftMargin: 8
+              text: root.headerText()
+              color: root.textMuted
+              font.pixelSize: 12
+              elide: Text.ElideRight
+              width: parent.width - 16
+            }
+          }
+
+          Rectangle { width: parent.width; height: 1; color: root.sepColor }
+
+          // Remaining runtime / time-to-limit field
+          Rectangle {
+            width: parent.width
+            height: root.timeH
+            color: "transparent"
+            border.color: root.panelBorder
+            border.width: 1
+            radius: root.rowRadius
+
+            Text {
+              anchors.centerIn: parent
+              text: root.timeInfo
+              color: root.levelColor()
+              font.pixelSize: 16
+              font.family: root.scriptFont
+              font.italic: true
+            }
+          }
           }
         }
 
@@ -299,12 +323,25 @@ BarWidget {
           }
         }
 
-        Rectangle { width: parent.width; height: 1; color: root.sepColor }
+        // 5mm gap between the charge-limit block and the sleep block
+        Item { width: parent.width; height: 20 }
 
-        // Sleep timer (below the limit buttons)
-        Column {
+        // Shutdown timer block (below the limit buttons), framed in system color
+        Rectangle {
           width: parent.width
-          spacing: root.shutGap
+          height: root.shutBlockH + root.shutFrameTopPad + root.shutFramePad
+          color: "transparent"
+          border.color: Color.accent
+          border.width: 1
+          radius: root.rowRadius
+
+          Column {
+            anchors.fill: parent
+            anchors.leftMargin: root.shutFramePad
+            anchors.rightMargin: root.shutFramePad
+            anchors.topMargin: root.shutFrameTopPad
+            anchors.bottomMargin: root.shutFramePad
+            spacing: root.shutGap
 
           // Section title
           Item {
@@ -313,12 +350,14 @@ BarWidget {
             Text {
               anchors.centerIn: parent
               text: "Sleep timer"
-              color: root.textMuted
-              font.pixelSize: 12
+              color: root.textMain
+              font.pixelSize: 14
               font.bold: true
               font.italic: true
             }
           }
+
+          Rectangle { width: parent.width; height: 1; color: root.sepColor }
 
           // Picked value + live countdown in one line
           Item {
@@ -362,13 +401,14 @@ BarWidget {
               implicitWidth: 18
               implicitHeight: 18
               radius: 9
-              color: root.frameActive
+              color: root.shutAmberDeep
               border.color: "#ffffff"
               border.width: 1
             }
           }
 
-          // Scale: digits at 0/30/60/90, plain ticks at 15/45/75
+          // Scale: digits at 0/30/60/90, plain ticks at 15/45/75,
+          // each centered on its true slider position
           Item {
             width: parent.width
             height: root.shutMarksH
@@ -408,7 +448,7 @@ BarWidget {
               height: root.shutBtnH
               radius: root.rowRadius
               color: setMa.containsMouse ? root.rowHover : root.rowActiveFill
-              border.color: root.frameActive
+              border.color: root.shutAmberDeep
               border.width: 1
 
               Text {
@@ -464,6 +504,7 @@ BarWidget {
                 }
               }
             }
+          }
           }
         }
       }
@@ -541,7 +582,7 @@ BarWidget {
     }
   }
 
-  // Sleep timer machinery (system `shutdown`, survives shell restarts)
+  // Shutdown timer machinery (system `shutdown`, survives shell restarts)
   Timer {
     id: shutTick
     interval: 1000
@@ -550,7 +591,7 @@ BarWidget {
     onTriggered: {
       if (root.shutLeftSecs > 0) {
         root.shutLeftSecs = root.shutLeftSecs - 1
-        // 2-minute warning: visual + click sound
+        // 2-minute warning: visual + light click sound
         if (root.shutLeftSecs === 120) shutWarn2Proc.running = true
         // Visual warning one minute before poweroff
         if (root.shutLeftSecs === 60) shutWarnProc.running = true

@@ -56,6 +56,14 @@ Charging starts below `start` and stops at `end`; above `end` the EC reports
 runtime from live current (`charge_now / current_now`), or time-to-limit
 while charging. Data refreshes every 30 seconds.
 
+## Sleep timer
+
+The menu also has a shutdown scheduler: pick 0–90 minutes on the slider
+(15-minute steps), press **Set**. The widget shows a live countdown, warns
+visually 2 minutes and 1 minute before poweroff, and **Cancel** aborts it
+(`shutdown -c`). Scheduling uses the system `shutdown` command, so it
+survives shell restarts; on load the widget re-reads any pending shutdown.
+
 ## Files
 
 | File | Purpose |
