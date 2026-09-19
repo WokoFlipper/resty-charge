@@ -42,14 +42,27 @@ BarWidget {
   property int batFull: 1   // µAh
   property bool popupOpen: false
 
+  // Sleep timer state (-1 = none)
+  property int shutPickMins: 30
+  property int shutLeftSecs: -1
+  property int shutPendingMins: 0
+
   readonly property int rowH: 30
   readonly property int rowGap: 6
   readonly property int headerH: 28
   readonly property int timeH: 32
   readonly property int menuW: 240
   readonly property int pad: 6
-  // header + sep + time field + sep + 3 framed rows + gaps
-  readonly property int menuH: headerH + 1 + timeH + 1 + 3 * rowH + 2 * rowGap + 2 * pad + 4
+  // Sleep timer block below the preset buttons
+  readonly property int shutTitleH: 18
+  readonly property int shutValH: 20
+  readonly property int shutSliderH: 26
+  readonly property int shutMarksH: 14
+  readonly property int shutBtnH: 28
+  readonly property int shutGap: 6
+  readonly property int shutBlockH: shutTitleH + shutValH + shutSliderH + shutMarksH + shutBtnH + 4 * shutGap
+  // header + sep + time field + sep + 3 framed rows + gaps + sep + sleep timer block
+  readonly property int menuH: headerH + 1 + timeH + 1 + 3 * rowH + 2 * rowGap + 1 + shutBlockH + 2 * pad + 4
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -85,6 +98,28 @@ BarWidget {
     if (preset === root.threshold)
       return "✓ " + preset + "%"
     return "  " + preset + "%"
+  }
+
+  function fmtHMS(s) {
+    s = Math.max(0, Math.round(s))
+    var h = Math.floor(s / 3600)
+    var m = Math.floor((s % 3600) / 60)
+    var sec = s % 60
+    var mm = (m < 10 ? "0" + m : m)
+    var ss = (sec < 10 ? "0" + sec : sec)
+    return h > 0 ? h + ":" + mm + ":" + ss : m + ":" + ss
+  }
+
+  // Sleep timer line: picked value, or live countdown (red in last 5 min)
+  function shutValText() {
+    if (root.shutLeftSecs < 0) return "In " + root.shutPickMins + " min"
+    return fmtHMS(root.shutLeftSecs) + " left"
+  }
+
+  function shutValColor() {
+    if (root.shutLeftSecs < 0) return root.textMain
+    if (root.shutLeftSecs <= 300) return "#ff5252"
+    return root.frameActive
   }
 
   function fmtDur(mins) {
@@ -263,6 +298,174 @@ BarWidget {
             delegate: menuRow
           }
         }
+
+        Rectangle { width: parent.width; height: 1; color: root.sepColor }
+
+        // Sleep timer (below the limit buttons)
+        Column {
+          width: parent.width
+          spacing: root.shutGap
+
+          // Section title
+          Item {
+            width: parent.width
+            height: root.shutTitleH
+            Text {
+              anchors.centerIn: parent
+              text: "Sleep timer"
+              color: root.textMuted
+              font.pixelSize: 12
+              font.bold: true
+              font.italic: true
+            }
+          }
+
+          // Picked value + live countdown in one line
+          Item {
+            width: parent.width
+            height: root.shutValH
+            Text {
+              anchors.centerIn: parent
+              text: root.shutValText()
+              color: root.shutValColor()
+              font.pixelSize: 13
+              font.bold: root.shutLeftSecs >= 0
+              font.italic: true
+            }
+          }
+
+          // Slider 0..90 step 15 (max 90 min)
+          Slider {
+            id: shutSlider
+            width: parent.width
+            height: root.shutSliderH
+            from: 0
+            to: 90
+            stepSize: 15
+            value: root.shutPickMins
+            snapMode: Slider.SnapAlways
+            onPressedChanged: if (pressed) autoHideTimer.restart()
+            onValueChanged: root.shutPickMins = Math.round(value)
+
+            background: Rectangle {
+              x: shutSlider.leftPadding
+              y: shutSlider.topPadding + shutSlider.availableHeight / 2 - height / 2
+              width: shutSlider.availableWidth
+              height: 4
+              radius: 2
+              color: root.panelBorder
+            }
+
+            handle: Rectangle {
+              x: shutSlider.leftPadding + shutSlider.visualPosition * (shutSlider.availableWidth - width)
+              y: shutSlider.topPadding + shutSlider.availableHeight / 2 - height / 2
+              implicitWidth: 18
+              implicitHeight: 18
+              radius: 9
+              color: root.frameActive
+              border.color: "#ffffff"
+              border.width: 1
+            }
+          }
+
+          // Scale: digits at 0/30/60/90, plain ticks at 15/45/75
+          Item {
+            width: parent.width
+            height: root.shutMarksH
+            Repeater {
+              model: [0, 15, 30, 45, 60, 75, 90]
+              delegate: Item {
+                required property int modelData
+                x: 9 + (modelData / 90) * (parent.width - 18)
+                width: 0
+                height: root.shutMarksH
+                Text {
+                  visible: modelData % 30 === 0
+                  anchors.centerIn: parent
+                  text: modelData
+                  color: root.textMuted
+                  font.pixelSize: 10
+                  font.italic: true
+                }
+                Rectangle {
+                  visible: modelData % 30 !== 0
+                  anchors.centerIn: parent
+                  width: 2
+                  height: 6
+                  color: root.textMuted
+                }
+              }
+            }
+          }
+
+          // Set / Cancel buttons
+          Row {
+            width: parent.width
+            spacing: root.shutGap
+
+            Rectangle {
+              width: (parent.width - root.shutGap) / 2
+              height: root.shutBtnH
+              radius: root.rowRadius
+              color: setMa.containsMouse ? root.rowHover : root.rowActiveFill
+              border.color: root.frameActive
+              border.width: 1
+
+              Text {
+                anchors.centerIn: parent
+                text: "Set"
+                color: "#ffffff"
+                font.pixelSize: 13
+                font.bold: true
+                font.italic: true
+              }
+
+              MouseArea {
+                id: setMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  autoHideTimer.restart()
+                  var mins = root.shutPickMins
+                  if (mins < 15) return
+                  root.shutPendingMins = mins
+                  shutSetProc.command = ["sh", "-c", "shutdown -h +" + mins]
+                  shutSetProc.running = true
+                }
+              }
+            }
+
+            Rectangle {
+              width: (parent.width - root.shutGap) / 2
+              height: root.shutBtnH
+              radius: root.rowRadius
+              color: "transparent"
+              border.color: root.shutLeftSecs >= 0 ? "#ff5252" : root.panelBorder
+              border.width: 1
+              opacity: root.shutLeftSecs >= 0 ? 1.0 : 0.4
+
+              Text {
+                anchors.centerIn: parent
+                text: "Cancel"
+                color: "#ffffff"
+                font.pixelSize: 13
+                font.italic: true
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  if (root.shutLeftSecs < 0) return
+                  autoHideTimer.restart()
+                  shutCancelProc.running = true
+                }
+              }
+            }
+          }
+        }
       }
     }
 
@@ -338,5 +541,77 @@ BarWidget {
     }
   }
 
-  Component.onCompleted: root.refresh()
+  // Sleep timer machinery (system `shutdown`, survives shell restarts)
+  Timer {
+    id: shutTick
+    interval: 1000
+    repeat: true
+    running: root.shutLeftSecs >= 0
+    onTriggered: {
+      if (root.shutLeftSecs > 0) {
+        root.shutLeftSecs = root.shutLeftSecs - 1
+        // 2-minute warning: visual + click sound
+        if (root.shutLeftSecs === 120) shutWarn2Proc.running = true
+        // Visual warning one minute before poweroff
+        if (root.shutLeftSecs === 60) shutWarnProc.running = true
+      } else {
+        // NOTE: do not assign shutTick.running here — the
+        // running: shutLeftSecs >= 0 binding stops it by itself,
+        // and an imperative assignment would break that binding.
+        root.shutLeftSecs = -1
+        shutPowerProc.running = true
+      }
+    }
+  }
+
+  Process {
+    id: shutSetProc
+    onExited: function(exitCode) {
+      if (exitCode === 0) {
+        root.shutLeftSecs = root.shutPendingMins * 60
+      }
+    }
+  }
+
+  Process {
+    id: shutCancelProc
+    command: ["sh", "-c", "shutdown -c"]
+    onExited: function(exitCode) {
+      root.shutLeftSecs = -1
+    }
+  }
+
+  Process {
+    id: shutPowerProc
+    command: ["sh", "-c", "systemctl poweroff"]
+  }
+
+  Process {
+    id: shutWarnProc
+    command: ["sh", "-c", "notify-send -u critical -a resty.charge 'Power off in a minute' 'The computer will power off in 60 seconds. Cancel in the widget menu.'"]
+  }
+
+  Process {
+    id: shutWarn2Proc
+    command: ["sh", "-c", "notify-send -u normal -a resty.charge 'Power off in 2 minutes' 'The computer will power off in 2 minutes. Cancel in the widget menu.'; paplay /usr/share/sounds/freedesktop/stereo/audio-volume-change.oga 2>/dev/null || mpv --no-video --no-terminal --really-quiet /usr/share/sounds/freedesktop/stereo/audio-volume-change.oga 2>/dev/null || true"]
+  }
+
+  Process {
+    id: shutQueryProc
+    command: ["sh", "-c", "shutdown --show 2>/dev/null"]
+    stdout: SplitParser {
+      onRead: function(line) {
+        var m = String(line).match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
+        if (!m) return
+        var t = new Date(m[1], m[2] - 1, m[3], m[4], m[5], m[6]).getTime()
+        var diff = Math.round((t - Date.now()) / 1000)
+        if (diff > 0) root.shutLeftSecs = diff
+      }
+    }
+  }
+
+  Component.onCompleted: {
+    root.refresh()
+    shutQueryProc.running = true
+  }
 }
