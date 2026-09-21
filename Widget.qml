@@ -44,10 +44,12 @@ BarWidget {
   property int batFull: 1   // µAh
   property bool popupOpen: false
 
-  // Shutdown timer state (-1 = none)
+  // Sleep timer state (-1 = none)
   property int shutPickMins: 30
   property int shutLeftSecs: -1
   property int shutPendingMins: 0
+  // Internal: set while parsing shutQueryProc output (timer alive + epoch line)
+  property bool _shutTimerAlive: false
 
   readonly property int rowH: 30
   readonly property int rowGap: 6
@@ -470,7 +472,7 @@ BarWidget {
                   var mins = root.shutPickMins
                   if (mins < 15) return
                   root.shutPendingMins = mins
-                  shutSetProc.command = ["sh", "-c", "shutdown -h +" + mins]
+                  shutSetProc.command = ["sh", "-c", "T=$(( $(date +%s%3N) + " + mins + "*60000 )); echo $T > ~/.cache/resty-charge-sleep-target; systemctl --user stop resty-sleep-timer.timer 2>/dev/null; systemd-run --user --unit=resty-sleep-timer --on-active=" + mins + "min --timer-property=AccuracySec=1s systemctl suspend"]
                   shutSetProc.running = true
                 }
               }
@@ -582,7 +584,20 @@ BarWidget {
     }
   }
 
-  // Shutdown timer machinery (system `shutdown`, survives shell restarts)
+  // Sleep timer machinery — SUSPEND, not poweroff.
+  //
+  // Logic history (why it looks like this): v1.x scheduled `shutdown -h +N`
+  // (full power off) while the menu labels already said "sleep timer". Labels
+  // did not match actions, so the mechanism was replaced: "Set" now creates
+  // a transient systemd user timer (resty-sleep-timer.timer) that runs
+  // `systemctl suspend`, and the target epoch (ms) is saved to
+  // ~/.cache/resty-charge-sleep-target. The widget countdown (shutTick) is
+  // DISPLAY ONLY — the transient timer is the robust actor and survives
+  // shell restarts. On load, shutQueryProc restores the display only if the
+  // transient timer is still active AND the saved target is in the future (a
+  // reboot wipes transient timers, so a stale state file alone never triggers
+  // anything). At zero the widget also fires `systemctl suspend` directly as
+  // a fallback.
   Timer {
     id: shutTick
     interval: 1000
@@ -591,16 +606,16 @@ BarWidget {
     onTriggered: {
       if (root.shutLeftSecs > 0) {
         root.shutLeftSecs = root.shutLeftSecs - 1
-        // 2-minute warning: visual + light click sound
+        // 2-minute warning: visual + click sound
         if (root.shutLeftSecs === 120) shutWarn2Proc.running = true
-        // Visual warning one minute before poweroff
+        // Visual warning one minute before sleep
         if (root.shutLeftSecs === 60) shutWarnProc.running = true
       } else {
         // NOTE: do not assign shutTick.running here — the
         // running: shutLeftSecs >= 0 binding stops it by itself,
         // and an imperative assignment would break that binding.
         root.shutLeftSecs = -1
-        shutPowerProc.running = true
+        shutSuspendProc.running = true
       }
     }
   }
@@ -616,37 +631,42 @@ BarWidget {
 
   Process {
     id: shutCancelProc
-    command: ["sh", "-c", "shutdown -c"]
+    command: ["sh", "-c", "systemctl --user stop resty-sleep-timer.timer 2>/dev/null; rm -f ~/.cache/resty-charge-sleep-target; true"]
     onExited: function(exitCode) {
       root.shutLeftSecs = -1
     }
   }
 
   Process {
-    id: shutPowerProc
-    command: ["sh", "-c", "systemctl poweroff"]
+    id: shutSuspendProc
+    command: ["sh", "-c", "systemctl suspend"]
   }
 
   Process {
     id: shutWarnProc
-    command: ["sh", "-c", "notify-send -u critical -a resty.charge 'Power off in a minute' 'The computer will power off in 60 seconds. Cancel in the widget menu.'"]
+    command: ["sh", "-c", "notify-send -u critical -a resty.charge 'Sleep in a minute' 'The computer will sleep in 60 seconds. Cancel in the widget menu.'"]
   }
 
   Process {
     id: shutWarn2Proc
-    command: ["sh", "-c", "notify-send -u normal -a resty.charge 'Power off in 2 minutes' 'The computer will power off in 2 minutes. Cancel in the widget menu.'; paplay /usr/share/sounds/freedesktop/stereo/audio-volume-change.oga 2>/dev/null || mpv --no-video --no-terminal --really-quiet /usr/share/sounds/freedesktop/stereo/audio-volume-change.oga 2>/dev/null || true"]
+    command: ["sh", "-c", "notify-send -u normal -a resty.charge 'Sleep in 2 minutes' 'The computer will sleep in 2 minutes. Cancel in the widget menu.'; paplay /usr/share/sounds/freedesktop/stereo/audio-volume-change.oga 2>/dev/null || mpv --no-video --no-terminal --really-quiet /usr/share/sounds/freedesktop/stereo/audio-volume-change.oga 2>/dev/null || true"]
   }
 
   Process {
     id: shutQueryProc
-    command: ["sh", "-c", "shutdown --show 2>/dev/null"]
+    command: ["sh", "-c", "systemctl --user is-active resty-sleep-timer.timer 2>/dev/null; cat ~/.cache/resty-charge-sleep-target 2>/dev/null"]
     stdout: SplitParser {
       onRead: function(line) {
-        var m = String(line).match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
-        if (!m) return
-        var t = new Date(m[1], m[2] - 1, m[3], m[4], m[5], m[6]).getTime()
-        var diff = Math.round((t - Date.now()) / 1000)
-        if (diff > 0) root.shutLeftSecs = diff
+        line = String(line).trim()
+        if (line === "active") {
+          root._shutTimerAlive = true
+          return
+        }
+        var t = parseInt(line)
+        if (!isNaN(t) && root._shutTimerAlive) {
+          var diff = Math.round((t - Date.now()) / 1000)
+          if (diff > 0) root.shutLeftSecs = diff
+        }
       }
     }
   }

@@ -58,11 +58,19 @@ while charging. Data refreshes every 30 seconds.
 
 ## Sleep timer
 
-The menu also has a shutdown scheduler: pick 0–90 minutes on the slider
+The menu also has a sleep timer: pick 15–90 minutes on the slider
 (15-minute steps), press **Set**. The widget shows a live countdown, warns
-visually 2 minutes and 1 minute before poweroff, and **Cancel** aborts it
-(`shutdown -c`). Scheduling uses the system `shutdown` command, so it
-survives shell restarts; on load the widget re-reads any pending shutdown.
+visually 2 minutes and 1 minute before sleep, and **Cancel** aborts it.
+Scheduling uses a transient systemd user timer (`resty-sleep-timer.timer`)
+running `systemctl suspend`, so it survives shell restarts; on load the
+widget restores the display from the saved target, but only while the
+transient timer is still active (a reboot wipes it, so nothing stale can
+fire). At zero the widget also issues `systemctl suspend` directly as
+a fallback.
+
+> **v1.1.0 note:** the timer originally scheduled `shutdown -h` (full power
+> off) while the labels already said “sleep”. As of v1.2.0 the mechanism
+> matches the labels — suspend only. Sorry for the mismatch.
 
 ## Files
 
