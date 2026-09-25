@@ -1,5 +1,15 @@
 # Changelog — resty.charge
 
+## v1.2.2 — sleep-reset-layout: Hyprland socket self-discovery
+
+- The workaround daemon now finds the Hyprland socket itself
+  (`/run/user/<uid>/hypr/*/.socket.sock`) when the launcher did not
+  propagate `HYPRLAND_INSTANCE_SIGNATURE` / `XDG_RUNTIME_DIR` — without
+  this every `hyprctl` call failed silently and no reset ever happened.
+- New `--reset-now` test hook proving discovery + reset without
+  suspending (verified from a stripped environment).
+- No widget changes.
+
 ## v1.2.1 — suspend layout workaround (docs + helper, no widget changes)
 
 - New: `sleep-reset-layout.sh` — resets all keyboards to English on
