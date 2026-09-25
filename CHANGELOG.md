@@ -1,5 +1,15 @@
 # Changelog — resty.charge
 
+## v1.2.1 — suspend layout workaround (docs + helper, no widget changes)
+
+- New: `sleep-reset-layout.sh` — resets all keyboards to English on
+  `PrepareForSleep`, working around an Omarchy system bug where the lock
+  screen keeps a non-Latin layout after resume and rejects the password.
+  **This plugin is not at fault**; upstream fix proposed in
+  omacom/omarchy#13227. User-level daemon (no root), one autostart line —
+  see README. Remove it once the official system fix is released.
+- Manifest 1.2.1 with an updated description noting the caveat.
+
 ## v1.2.0 — sleep timer actually sleeps
 
 - The "Sleep timer" block no longer powers the machine off. "Set" creates a

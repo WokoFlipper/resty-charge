@@ -79,6 +79,7 @@ a fallback.
 | `Widget.qml` | Bar widget + popup menu |
 | `manifest.json` | Omarchy plugin manifest |
 | `matebook-set-limit.sh` | Writes the pair to sysfs + persists to `/etc/default` |
+| `sleep-reset-layout.sh` | Optional pre-sleep layout reset (see Known issue below) |
 | `selfheal/` | Boot/resume service + pacman hook against kernel-update breakage (see below) |
 
 ## Known issue: limit stops working after reboot / kernel update
@@ -118,6 +119,41 @@ Installs:
   after any `linux*`/`huawei-wmi` package transaction, no reboot required.
 
 Verify: `systemctl is-enabled huawei-wmi-mode-assert.service` → `enabled`.
+
+## Known issue: lock screen keeps a non-Latin layout after suspend (Omarchy bug — not this plugin)
+
+> **This plugin is not at fault.** A critical bug was found in the system:
+> Omarchy's suspend path (`PrepareForSleep` → `omarchy-system-sleep-lock`
+> → `omarchy-shell lock lock`) never resets the keyboard layout, while the
+> manual lock path (`omarchy-system-lock`) does — it runs
+> `hyprctl switchxkblayout all 0`. XKB layout survives suspend, so if you
+> sleep on e.g. Russian, the lock screen after resume is also Russian and
+> the password is rejected (Cyrillic instead of Latin), forcing a hard
+> reboot. This affects the sleep timer above and any suspend, not just this
+> widget.
+>
+> Upstream fix proposed: https://github.com/omacom/omarchy/pull/13227 —
+> until it lands, use the bundled workaround below.
+
+### Workaround: `sleep-reset-layout.sh`
+
+Resets all keyboards to layout 0 (English) on every `PrepareForSleep`
+signal, before the lock screen appears (layout is global, so even a
+late reset still fixes subsequent keypresses):
+
+```bash
+install -m 755 sleep-reset-layout.sh ~/.local/bin/sleep-reset-layout.sh
+```
+
+and add to `~/.config/hypr/autostart.lua`:
+
+```lua
+o.launch_on_start("sleep-reset-layout.sh")
+```
+
+User-level daemon, no root, watches the same D-Bus signal as Omarchy's own
+sleep monitor and touches nothing else. Remove it once the official system
+fix is released.
 
 ## Uninstall
 

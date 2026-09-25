@@ -33,6 +33,15 @@ Smart Charge issue (EC re-enables Smart Charge on reboot, ignoring limits).
 Arch/pacman-specific, needs root via `install-selfheal.sh`. Safe to ignore
 during plugin review — it is never executed by the widget itself.
 
+## sleep-reset-layout.sh (optional, not loaded by the shell)
+
+User-level workaround for an Omarchy suspend/lock system bug: the lock
+screen keeps a non-Latin layout after resume and rejects the password
+(upstream fix proposed in omacom/omarchy#13227). Watches `PrepareForSleep`
+via `dbus-monitor` and runs `hyprctl switchxkblayout <kbd> 0` on every
+keyboard. No root, no system files touched, never executed by the widget —
+safe to ignore during plugin review.
+
 ## Support
 
 Issues and hardware reports (other Huawei/Honor models, different `BATn`
