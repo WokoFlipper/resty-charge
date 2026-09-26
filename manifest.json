@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "resty.charge",
   "name": "Charge limit",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "author": "Resty",
   "description": "Battery charge-limit widget for Huawei/Honor laptops (70/90/95 presets, runtime estimation). Requires the huawei-wmi driver and matebook-set-limit.sh. Note: Omarchy suspend keeps a non-Latin keyboard layout on the lock screen (system bug, see README) — workaround script bundled.",
   "kinds": [

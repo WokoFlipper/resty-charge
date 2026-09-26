@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+"""Huawei MateBook charge-limit tray panel with notifications."""
+
+import os
+import subprocess
+import time
+import datetime
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("AyatanaAppIndicator3", "0.1")
+from gi.repository import Gtk, Gdk, AyatanaAppIndicator3, GLib
+
+# ── Config ──────────────────────────────────────────────────────────────
+BAT = "BAT1"
+SYSFS_THRESHOLD = "/sys/devices/platform/huawei-wmi/charge_control_thresholds"
+POLL_SEC = 10
+NOTIFY_EXPIRE_MS = 15000
+LOW_EXPIRE_MS = 30000
+SOUND_DIR = "/usr/share/sounds/freedesktop/stereo"
+ICONS_DIR = os.path.expanduser("~/.local/share/battery-icons")
+
+LOG_FILE = os.path.expanduser("~/.cache/matebook-charge.log")
+PRESETS = [70, 90, 95]
+
+# ── Helpers
+
+def log(msg):
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    with open(LOG_FILE, "a") as f:
+        f.write(f"[{datetime.datetime.now().isoformat()}] {msg}\n")
+
+def read_capacity():
+    try:
+        with open(f"/sys/class/power_supply/{BAT}/capacity") as f:
+            return int(f.read().strip())
+    except Exception:
+        return -1
+
+
+def read_charging():
+    try:
+        with open(f"/sys/class/power_supply/{BAT}/status") as f:
+            return f.read().strip() == "Charging"
+    except Exception:
+        return False
+
+
+def read_ac_power():
+    try:
+        with open("/sys/class/power_supply/ACAD/online") as f:
+            return f.read().strip() == "1"
+    except Exception:
+        return False
+
+
+def read_threshold():
+    """End threshold from sysfs; default 70 if unknown (post long reboot)."""
+    try:
+        with open(SYSFS_THRESHOLD) as f:
+            parts = f.read().strip().split()
+            if len(parts) >= 2:
+                return int(parts[1])
+    except Exception:
+        pass
+    return 70
+
+
+THRESHOLD_MAP = {
+    70:  (40, 70),
+    90:  (70, 90),
+    95:  (70, 95),
+}
+
+
+def _helper_path():
+    """Locate matebook-set-limit.sh without hardcoded home dirs.
+
+    Order: same dir as this script (repo/system installs) ->
+    ~/.local/bin (user installs) -> PATH fallback.
+    """
+    here = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                        "matebook-set-limit.sh")
+    if os.path.isfile(here) and os.access(here, os.X_OK):
+        return here
+    home = os.path.join(os.path.expanduser("~/.local/bin"),
+                        "matebook-set-limit.sh")
+    if os.path.isfile(home):
+        return home
+    return "matebook-set-limit.sh"  # PATH fallback
+
+
+def write_threshold(preset):
+    start, end = THRESHOLD_MAP[preset]
+    helper = _helper_path()
+    subprocess.Popen(
+        [helper, str(start), str(end)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def play_sound(name):
+    path = os.path.join(SOUND_DIR, name)
+    if os.path.isfile(path):
+        subprocess.Popen(
+            ["mpv", "--no-video", "--no-terminal", "--volume=100", path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def boost_volume_for_alert(cap):
+    """If battery is below 50%, raise volume to 80% before an alert."""
+    if cap is not None and cap < 50:
+        subprocess.run(
+            ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "0.8"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def play_critical_alert():
+    """Prolonged, sharper critical alert: play the alarm sound loud, twice."""
+    path = os.path.join(SOUND_DIR, "alarm-clock-elapsed.oga")
+    if not os.path.isfile(path):
+        return
+    for _ in range(2):
+        subprocess.Popen(
+            ["mpv", "--no-video", "--no-terminal", "--volume=100", path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.6)
+
+
+def notify(summary, body, icon_path, expire_ms=NOTIFY_EXPIRE_MS):
+    cmd = [
+        "notify-send",
+        "-a", "matebook-charge",
+        "-i", icon_path,
+        "-t", str(expire_ms),
+        "-h", "int:transient:0",
+        summary,
+        body,
+    ]
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+# ── SVG battery icon generator ─────────────────────────────────────────
+
+BATTERY_PATH = (
+    "M 18 8 Q 15 8 15 11 L 15 49 Q 15 52 18 52 "
+    "L 33 52 Q 36 52 36 49 L 36 11 Q 36 8 33 8 "
+    "L 30 8 L 30 4 Q 30 1 27 1 L 23 1 Q 20 1 20 4 "
+    "L 20 8 L 18 8 Z"
+)
+
+
+def battery_svg(percent, charging, threshold_reached=False):
+    if percent <= 20:
+        color = "#e74c3c"
+    elif percent <= 69:
+        color = "#f1c40f"
+    else:
+        color = "#2ecc71"
+
+    symbol = ""
+    if threshold_reached:
+        symbol = f'''
+    <line x1="25" y1="16" x2="25" y2="32" stroke="{color}" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="25" cy="38" r="1.8" fill="{color}"/>'''
+    elif charging:
+        symbol = f'''
+    <polygon points="27,16 21,28 25,28 22,38 31,25 26,25 29,16"
+             fill="none" stroke="{color}" stroke-width="1.5"
+             stroke-linejoin="round" stroke-linecap="round"/>'''
+
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 60" width="50" height="60">
+  <path d="{BATTERY_PATH}" fill="none" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>
+  {symbol}
+</svg>'''
+    return svg, color
+
+
+def save_battery_icon(percent, charging, threshold_reached=False):
+    svg_text, _ = battery_svg(percent, charging, threshold_reached)
+    path = os.path.join(ICONS_DIR, "notify-battery.svg")
+    os.makedirs(ICONS_DIR, exist_ok=True)
+    with open(path, "w") as f:
+        f.write(svg_text)
+    return path
+
+
+def active_theme_foreground():
+    """Read the 'foreground' colour from the active Omarchy theme."""
+    try:
+        cur = subprocess.check_output(
+            ["omarchy", "theme", "current"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        cur = "Tokyo Night"
+
+    names = [cur]
+    names.extend(n for n in (cur.lower(), cur.title()) if n not in names)
+
+    themes_root = os.path.expanduser("~/.config/omarchy/themes")
+    stock_root = "/usr/share/omarchy/themes"
+    for name in names:
+        for base in (themes_root, stock_root):
+            colors = os.path.join(base, name, "colors.toml")
+            if os.path.isfile(colors):
+                try:
+                    with open(colors) as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("foreground"):
+                                val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                                if val.startswith("#"):
+                                    return val
+                except Exception:
+                    continue
+    return "#a9b1d6"
+
+
+def tray_icon_svg(text, color="#a9b1d6"):
+    """Text-only tray icon: just the threshold, no battery glyph, no pill.
+
+    Transparent background so only the text renders, sized to fill the bar
+    slot height (icon-slot). Fill uses the bar foreground colour so it matches
+    the neighbouring widgets.
+    """
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 27" width="42" height="27">
+  <text x="21" y="24" text-anchor="middle" font-family="sans-serif"
+        font-size="34" font-weight="600" fill="{color}">{text}</text>
+</svg>'''
+    return svg
+
+
+def save_tray_icon(text):
+    svg_text = tray_icon_svg(text, active_theme_foreground())
+    path = os.path.join(ICONS_DIR, "tray-battery.svg")
+    os.makedirs(ICONS_DIR, exist_ok=True)
+    with open(path, "w") as f:
+        f.write(svg_text)
+    return path
+
+
+# ── Events daemon (headless) ────────────────────────────────────────────
+# No popup UI: visual control lives in resty.charge (bar widget).
+# This process only polls: plug/unplug, limit reached, low-bat, suspend.
+# PASSIVE indicator → no tray icon.
+
+class ChargePanel:
+    def __init__(self):
+        self.indicator = AyatanaAppIndicator3.Indicator.new(
+            "matebook-charge-panel",
+            "tray-battery",
+            AyatanaAppIndicator3.IndicatorCategory.APPLICATION_STATUS,
+        )
+        # PASSIVE: no tray icon (UI is resty.charge). Keep poll events only.
+        self.indicator.set_status(AyatanaAppIndicator3.IndicatorStatus.PASSIVE)
+        self.indicator.set_icon_theme_path(ICONS_DIR)
+        self.indicator.set_icon_full("tray-battery", "")
+
+        thr = read_threshold()
+        self.current_threshold = thr if thr in PRESETS else (thr if thr > 0 else 70)
+        if self.current_threshold not in PRESETS and self.current_threshold < 60:
+            self.current_threshold = 70
+        log("DAEMON STARTED")
+        self.was_charging = read_ac_power()
+        self.prev_percent = read_capacity()
+        self.notified_20 = False
+        self.notified_15 = False
+        self.notified_12 = False
+
+        self._update_label()
+
+        # Dummy menu, no UI attached (PASSIVE → never shown).
+        self.menu = Gtk.Menu()
+        dummy = Gtk.MenuItem(label="Battery")
+        dummy.set_sensitive(False)
+        self.menu.append(dummy)
+        self.menu.show_all()
+        self.indicator.set_menu(self.menu)
+
+        GLib.timeout_add_seconds(POLL_SEC, self._poll)
+
+    def _update_label(self):
+        text = f"({self.current_threshold})"
+        self.indicator.set_label(f"  {text}  ", "matebook-charge-panel")
+        save_tray_icon(text)
+        self.indicator.set_icon_full("tray-battery", "")
+
+    def _poll(self):
+        cap = read_capacity()
+        charging = read_charging()
+        ac_power = read_ac_power()
+        threshold = read_threshold()
+
+        if cap < 0:
+            return True
+
+        if threshold != self.current_threshold:
+            self.current_threshold = threshold if threshold > 0 else 70
+            self._update_label()
+
+        # Plugged in (AC power connected)
+        if ac_power and not self.was_charging:
+            icon = save_battery_icon(cap, True)
+            notify("Зарядка подключена", f"Уровень заряда: {cap}%", icon, NOTIFY_EXPIRE_MS)
+            play_sound("power-plug.oga")
+            self.notified_20 = False
+            self.notified_15 = False
+
+        # Unplugged (AC power disconnected)
+        elif not ac_power and self.was_charging:
+            icon = save_battery_icon(cap, False)
+            notify("Зарядка отключена", f"Уровень заряда: {cap}%", icon, NOTIFY_EXPIRE_MS)
+            boost_volume_for_alert(cap)
+            play_sound("power-unplug.oga")
+
+        # Threshold reached
+        if not charging and cap >= self.current_threshold and self.prev_percent < self.current_threshold:
+            icon = save_battery_icon(cap, False, threshold_reached=True)
+            notify(
+                "Порог заряда достигнут",
+                f"Батарея заряжена до {self.current_threshold}%, зарядка отключена",
+                icon,
+                NOTIFY_EXPIRE_MS,
+            )
+
+        # Low battery alerts only while running on battery (AC unplugged).
+        # With AC connected the battery is (re)charging, so no warnings/suspend.
+        if not ac_power:
+            # Low battery: 12% → suspend. Separate flag: notified_15 is
+            # already latched from the 15% warning by the time we get here,
+            # so reusing it would block suspend forever on normal discharge.
+            if cap <= 12 and not self.notified_12:
+                self.notified_12 = True
+                self.notified_15 = True
+                self.notified_20 = True
+                GLib.timeout_add(5000, self._do_suspend)
+
+            # Low battery: 15% → warning + suspend notification
+            elif cap <= 15 and not self.notified_15:
+                icon = save_battery_icon(cap, False, threshold_reached=True)
+                notify(
+                    "Батарея разряжена",
+                    "Батарея разряжена, компьютер перейдёт в спящий режим",
+                    icon,
+                    LOW_EXPIRE_MS,
+                )
+                boost_volume_for_alert(cap)
+                play_critical_alert()
+                self.notified_15 = True
+                self.notified_20 = True
+
+            # Low battery: 20% → warning
+            elif cap <= 20 and not self.notified_20:
+                icon = save_battery_icon(cap, False, threshold_reached=True)
+                notify(
+                    "Батарея разряжена",
+                    "Батарея разряжена, подключите зарядное устройство",
+                    icon,
+                    LOW_EXPIRE_MS,
+                )
+                boost_volume_for_alert(cap)
+                play_critical_alert()
+                self.notified_20 = True
+
+        # Hysteresis: reset only well above the trigger level, otherwise
+        # capacity oscillating around 20/21 (or 15/16) replays the alert.
+        if cap > 22:
+            self.notified_20 = False
+        if cap > 17:
+            self.notified_15 = False
+        if cap > 12:
+            self.notified_12 = False
+
+        self.was_charging = ac_power
+        self.prev_percent = cap
+
+        return True
+
+    def _do_suspend(self):
+        cap = read_capacity()
+        log(f"SUSPEND TRIGGERED battery={cap}%")
+        try:
+            result = subprocess.run(
+                ["systemctl", "suspend"],
+                capture_output=True, text=True, timeout=10
+            )
+            log(f"SUSPEND rc={result.returncode} stderr={result.stderr.strip()}")
+        except Exception as e:
+            log(f"SUSPEND FAILED {e!r}")
+        return False
+
+    def _quit(self, *args):
+        Gtk.main_quit()
+
+
+def main():
+    panel = ChargePanel()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

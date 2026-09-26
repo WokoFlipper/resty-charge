@@ -80,6 +80,7 @@ a fallback.
 | `manifest.json` | Omarchy plugin manifest |
 | `matebook-set-limit.sh` | Writes the pair to sysfs + persists to `/etc/default` |
 | `sleep-reset-layout.sh` | Optional pre-sleep layout reset (see Known issue below) |
+| `daemon/` | Optional headless events daemon + watchdog: AC plug/unplug, limit-reached and low-battery notifications with sounds, suspend at ≤12%. No tray icon (PASSIVE), no root. Autostart via `matebook-charge-watchdog.sh` |
 | `selfheal/` | Boot/resume service + pacman hook against kernel-update breakage (see below) |
 
 ## Known issue: limit stops working after reboot / kernel update

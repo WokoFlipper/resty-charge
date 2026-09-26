@@ -1,5 +1,18 @@
 # Changelog — resty.charge
 
+## v1.2.3 — bundled events daemon + suspend-guard fix (no widget changes)
+
+- New `daemon/` folder: the headless events daemon (`matebook-charge-panel`,
+  PASSIVE AppIndicator, no root) plus watchdog. Handles AC plug/unplug,
+  limit-reached and low-battery notifications with sounds, and suspend at
+  ≤12%. All paths portable (no hardcoded home dirs). Install: copy both
+  files to `~/.local/bin`, add `matebook-charge-watchdog.sh` to autostart.
+- Fixed: the 12% suspend branch checked the already-latched `notified_15`
+  flag, so on a normal discharge suspend never fired (verified live: 10%,
+  no suspend). The branch now uses its own `notified_12` flag (reset above
+  12%). Marker `notified_12` identifies the fixed version.
+- No widget changes.
+
 ## v1.2.2 — sleep-reset-layout: Hyprland socket self-discovery
 
 - The workaround daemon now finds the Hyprland socket itself
